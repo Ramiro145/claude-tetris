@@ -1,0 +1,85 @@
+name: Claude Issue Triage
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Ensure triage labels exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create "area:gameplay"  --color "1D76DB" --description "Piezas, colisiones, rotación, spawn" --force
+          gh label create "area:rendering" --color "5319E7" --description "Dibujado en canvas, ghost piece, grid" --force
+          gh label create "area:ui"        --color "0E8A16" --description "HTML/CSS, overlays, panel HUD" --force
+          gh label create "area:controls"  --color "FBCA04" --description "Teclado, soft/hard drop, pausa" --force
+          gh label create "area:scoring"   --color "C2E0C6" --description "Puntuación, niveles, dropInterval" --force
+          gh label create "priority:P0"    --color "B60205" --description "Bloqueante" --force
+          gh label create "priority:P1"    --color "D93F0B" --description "Prioridad normal" --force
+          gh label create "priority:P2"    --color "C5DEF5" --description "Mejora opcional" --force
+
+      - name: Run Claude Code triage
+        id: claude-triage
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: '--allowedTools "Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh api:*),Bash(gh label list:*),Read,Grep,Glob"'
+          prompt: |
+            Eres un triage bot para issues de este repositorio (un juego de Tetris en
+            JavaScript vanilla: game.js, index.html, style.css). El issue #${{ github.event.issue.number }}
+            se acaba de abrir o editar. Tu trabajo:
+
+            1. Lee el issue con:
+               gh issue view ${{ github.event.issue.number }} --json title,body,labels,comments
+
+            2. Lee los labels existentes con `gh label list` para no inventar ninguno.
+
+            3. Lee el código relevante del repo (game.js, index.html, style.css y, si existe,
+               CLAUDE.md) para entender qué parte del juego está implicada. Usa Read/Grep/Glob.
+
+            4. Aplica labels con:
+               gh issue edit ${{ github.event.issue.number }} --add-label "..."
+               Reglas:
+               - Exactamente un tipo: "bug", "enhancement", "documentation" o "question".
+               - Exactamente un area:*  (area:gameplay, area:rendering, area:ui, area:controls,
+                 area:scoring) — el que mejor describa el área del código afectada.
+               - Exactamente una priority:* (priority:P0 bloqueante, priority:P1 normal,
+                 priority:P2 mejora opcional).
+               - No re-apliques labels que el issue ya tenga si siguen siendo correctos; si
+                 detectas que un label previo ya no aplica (p. ej. tras una edición), quítalo con
+                 --remove-label antes de añadir el nuevo.
+
+            5. Redacta un diagnóstico BREVE (máximo ~8 líneas) en este formato exacto:
+
+               <!-- claude-triage -->
+               **Qué pasa:** <1-2 frases>
+               **Dónde:** <archivos y funciones concretas, ej. game.js:tryRotate, game.js:collide>
+               **Enfoque:** <1 frase con la solución propuesta>
+
+            6. Antes de publicar, comprueba si ya existe un comentario de triage previo:
+               gh api repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments \
+                 --jq '.[] | select(.body | contains("<!-- claude-triage -->")) | .id'
+
+               - Si devuelve un id, actualiza ESE comentario (no crees uno nuevo):
+                 gh api --method PATCH repos/${{ github.repository }}/issues/comments/<id> \
+                   -f body='<nuevo contenido>'
+               - Si no devuelve nada, crea uno nuevo:
+                 gh issue comment ${{ github.event.issue.number }} --body '<contenido>'
+
+            No hagas nada más (no cierres el issue, no asignes personas, no comentes en otros
+            issues). Si el issue no aporta información suficiente para diagnosticar, dilo
+            explícitamente en el campo "Qué pasa" y etiqueta con priority:P2 hasta tener más datos.
