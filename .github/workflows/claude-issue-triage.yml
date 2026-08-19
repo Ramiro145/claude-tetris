@@ -63,7 +63,9 @@ jobs:
                  detectas que un label previo ya no aplica (p. ej. tras una edición), quítalo con
                  --remove-label antes de añadir el nuevo.
 
-            5. Redacta un diagnóstico BREVE (máximo ~8 líneas) en este formato exacto:
+            5. Redacta un diagnóstico BREVE (máximo ~8 líneas) en formato Markdown válido
+               (el que GitHub pueda interpretar correctamente al renderizarlo), siguiendo
+               este formato exacto:
 
                <!-- claude-triage -->
                **Qué pasa:** <1-2 frases>
