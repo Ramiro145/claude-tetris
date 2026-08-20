@@ -147,7 +147,9 @@ function spawn() {
   current = next;
   next = randomPiece();
   if (collide(current.shape, current.x, current.y)) {
+    nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
     endGame();
+    return;
   }
   drawNext();
 }
@@ -196,6 +198,8 @@ function draw() {
     for (let c = 0; c < COLS; c++)
       drawBlock(ctx, c, r, board[r][c], BLOCK);
 
+  if (gameOver || !current) return;
+
   // ghost
   const gy = ghostY();
   for (let r = 0; r < current.shape.length; r++)
@@ -223,6 +227,8 @@ function drawNext() {
 function endGame() {
   gameOver = true;
   cancelAnimationFrame(animId);
+  animId = null;
+  draw();
   overlayTitle.textContent = 'GAME OVER';
   overlayScore.textContent = `Puntuación: ${score.toLocaleString()}`;
   overlay.classList.remove('hidden');
@@ -243,6 +249,7 @@ function togglePause() {
 }
 
 function loop(ts) {
+  if (paused || gameOver) return;
   const dt = ts - lastTime;
   lastTime = ts;
   dropAccum += dt;
@@ -254,6 +261,7 @@ function loop(ts) {
       lockPiece();
     }
   }
+  if (gameOver) return;
   draw();
   animId = requestAnimationFrame(loop);
 }
@@ -277,6 +285,11 @@ function init() {
 }
 
 document.addEventListener('keydown', e => {
+  // Evita que Space/flechas activen el elemento enfocado (botones, etc.)
+  // sin importar el estado del juego.
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'ArrowDown') {
+    e.preventDefault();
+  }
   if (e.code === 'KeyP') { togglePause(); return; }
   if (paused || gameOver) return;
   switch (e.code) {
@@ -294,14 +307,16 @@ document.addEventListener('keydown', e => {
       tryRotate();
       break;
     case 'Space':
-      e.preventDefault();
       hardDrop();
       break;
   }
   updateHUD();
 });
 
-restartBtn.addEventListener('click', init);
+restartBtn.addEventListener('click', () => {
+  restartBtn.blur();
+  init();
+});
 
 const THEME_KEY = 'tetris-theme';
 
@@ -312,10 +327,11 @@ function applyTheme(theme) {
   themeToggle.setAttribute('aria-label', isLight ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro');
   themeIcon.textContent = isLight ? '☀️' : '🌙';
   if (board) draw();
-  if (next) drawNext();
+  if (next && !gameOver) drawNext();
 }
 
 themeToggle.addEventListener('click', () => {
+  themeToggle.blur();
   const theme = document.body.classList.contains('light-theme') ? 'dark' : 'light';
   localStorage.setItem(THEME_KEY, theme);
   applyTheme(theme);
